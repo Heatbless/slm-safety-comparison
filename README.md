@@ -26,23 +26,24 @@ LoRA SFT outperforms Llama Guard 3 on both safety and usability. It also has a s
 ```
 .
 ├── dataset/
-│   ├── direct_injection.jsonl          # Adversarial prompts - Direct Injection
-│   ├── indirect_injection.jsonl        # Adversarial prompts - Indirect Injection
-│   ├── persona_hijacking.jsonl         # Adversarial prompts - Persona Hijacking
-│   ├── hypothetical_framing.jsonl      # Adversarial prompts - Hypothetical Framing
-│   ├── sft_dataset.jsonl               # SFT training corpus
-│   ├── general_question.jsonl          # General eval prompts for SFT
-│   ├── lora_question.jsonl             # LoRA-specific eval prompts
-│   └── OOD/
-│       ├── ood_corpus_clean.jsonl      # OOD evaluation corpus
-│       ├── OOD_Deepseek_hard_clean.jsonl  # OOD hard evaluation corpus
-│       └── xstest_safe.jsonl           # Safe prompts for FRR measurement
-├── 1_Baseline_Evaluation.py
-├── 2_SFT_LoRA_Mistral_7B.py
-├── 3_Extrinsic_vs_Intrinsic.py
+│   ├── model_evaluation/
+│   │   └── harmbench_test.jsonl       # Baseline model evaluation
+│   ├── trained_model_test/
+│   │   ├── advbench_test.jsonl        # Held-out harmful-request test prompts
+│   │   └── xstest_safe.jsonl          # Safe prompts for false-refusal measurement
+│   ├── OOD/                           # Existing OOD and XSTest source corpora
+│   ├── direct_injection.jsonl
+│   ├── indirect_injection.jsonl
+│   ├── persona_hijacking.jsonl
+│   ├── hypothetical_framing.jsonl
+│   └── sft_dataset.jsonl              # SFT training corpus
+├── 1)_Baseline_Evaluation.ipynb
+├── 2)_SFT_LoRA_Mistral_7B_v0_2.ipynb
+├── 3)_Extrinsic_vs_Intrinsic_Mistral.ipynb
 └── README.md
 ```
 
+Dataset roles, source revisions, checksums, and license notices are documented in [`dataset/README.md`](dataset/README.md).
 ---
 
 ## Setup
@@ -94,20 +95,21 @@ BASE_DIR = "/content/drive/MyDrive/YOUR_FOLDER"
 
 ### 1. Baseline Evaluation (`1_Baseline_Evaluation.py`)
 
-Evaluates four SLMs against the adversarial prompt corpus without any defense applied. This establishes the SLM model used as the selected model for SFT LoRA training.
+Evaluates four SLMs on the designated HarmBench model evaluation set without any defense applied. This establishes the baseline for comparison with the post-training model.
 
 - HuggingFace login: **Required** (Llama 3.1 is gated)
-- Dataset: loaded from GitHub
-- Results: saved to Google Drive
+- Dataset: dataset/model_evaluation/harmbench_test.jsonl loaded from GitHub
+- Results: saved to Google Drive with each prompt category
 
 ### 2. SFT LoRA Training and Evaluation (`2_SFT_LoRA_Mistral_7B.py`)
 
 **Part A** fine-tunes Mistral-7B-Instruct-v0.2 using LoRA SFT on the adversarial safety corpus. Training runs in full BF16 precision to maximize weight update quality.
 
-**Part B** evaluates the fine-tuned model using 4-bit NF4 quantization with BF16 compute dtype to simulate a more realistic inference environment.
+**Part B** evaluates the fine-tuned model on the designated AdvBench and safe XSTest test sets using 4-bit NF4 quantization with BF16 compute dtype.
 
 - HuggingFace login: **Optional** (Mistral is not gated)
-- Dataset: loaded from GitHub
+- Training data: dataset/sft_dataset.jsonl
+- Test data: dataset/trained_model_test/advbench_test.jsonl and dataset/trained_model_test/xstest_safe.jsonl
 - Adapter: saved to and loaded from Google Drive
 
 LoRA configuration:
@@ -124,7 +126,7 @@ LoRA configuration:
 Runs the final head-to-head comparison across three conditions: Baseline, LoRA SFT (intrinsic), and Llama Guard 3 (extrinsic). Evaluates both DSR on adversarial prompts and FRR on safe prompts.
 
 - HuggingFace login: **Required** (Llama Guard 3 is gated)
-- Dataset: adversarial prompts and OOD evaluation files (from `dataset/OOD/`) loaded from GitHub
+- Datasets: designated HarmBench model evaluation and AdvBench/XSTest trained-model test files loaded from GitHub
 - Results: saved to Google Drive
 
 ---
