@@ -3,13 +3,15 @@
 An independent research project comparing two defensive approaches against adversarial prompting on Small Language Models (SLMs) under 10B parameters.
 
 - **Intrinsic defense**: LoRA Supervised Fine-Tuning (SFT) on Mistral-7B-Instruct-v0.2
-- **Extrinsic defense**: Llama Guard 3 8B as an input/output filter
+- **Extrinsic defense**: request screening and response moderation with Llama Guard 3 8B or Granite Guardian 3.1 2B
 
-Tested across four adversarial attack techniques: Direct Injection, Indirect Injection, Persona Hijacking, and Hypothetical Framing.
+The designated evaluation files are HarmBench for baseline model evaluation, AdvBench for trained-model testing, and safe XSTest prompts for measuring false refusals.
 
 ---
 
-## Key Results
+## Existing Results
+
+The figures below come from the earlier experiment and its original prompt corpus. They have not been recomputed with the designated datasets or the updated two-stage guard pipeline; rerun notebook 3 before treating them as a comparison of the current setup.
 
 | Method | Defense Success Rate (DSR) | False Refusal Rate (FRR) |
 |---|---|---|
@@ -17,7 +19,7 @@ Tested across four adversarial attack techniques: Direct Injection, Indirect Inj
 | Llama Guard 3 (extrinsic) | 66.23% | 66.67% |
 | LoRA SFT (intrinsic) | **90.91%** | **17.07%** |
 
-LoRA SFT outperforms Llama Guard 3 on both safety and usability. It also has a significant practical advantage: extrinsic defense requires running two models simultaneously (Mistral 7B + Llama Guard 3 8B), which demands approximately 14 to 16GB of VRAM and is therefore not viable for consumer hardware deployment. Intrinsic fine-tuning requires only one model at inference time.
+These historical numbers should not be used to rank the current methods. The updated notebook screens requests before generation and checks responses afterward, and compares Llama Guard 3 with the smaller Granite Guardian. Each guard still runs alongside the target model during guarded evaluation; actual memory use depends on quantization and device placement.
 
 ---
 
@@ -62,9 +64,10 @@ Some models used in this project are gated and require HuggingFace approval:
 | Qwen/Qwen3-8B | No | Notebook 1 |
 | lmsys/vicuna-7b-v1.5 | No | Notebook 1 |
 | meta-llama/Meta-Llama-3.1-8B-Instruct | **Yes** | Notebook 1 |
-| meta-llama/Llama-Guard-3-8B | **Yes** | Notebook 3 |
+| meta-llama/Llama-Guard-3-8B | **Yes** | Notebook 3 (optional gated guard) |
+| [ibm-granite/granite-guardian-3.1-2b](https://huggingface.co/ibm-granite/granite-guardian-3.1-2b) | No | Notebook 3 (ungated alternative) |
 
-To request access, visit each model's page on [huggingface.co](https://huggingface.co) and accept the usage terms.
+To request access, visit each gated model's page on [huggingface.co](https://huggingface.co) and accept the usage terms. In notebook 3, set RUN_LLAMAGUARD3 = False to skip the gated Llama Guard condition and run the ungated Granite Guardian comparison.
 
 ### Adding your HuggingFace Token to Colab
 
@@ -83,7 +86,7 @@ GITHUB_RAW = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/dat
 
 ### Google Drive path
 
-The notebooks use Google Drive to save and load the LoRA adapter and evaluation results. Update `BASE_DIR` in each notebook to match your Drive folder:
+The notebooks use Google Drive to save and load the LoRA adapter and evaluation results. In Colab, select a GPU runtime, run the setup cells, and approve the Drive mount prompt. Notebook 3 can run its baseline and Granite Guardian conditions without an SFT adapter or Hugging Face token; it adds SFT when the adapter from notebook 2 exists and adds Llama Guard when `HF_TOKEN` is available and the account has model access. Notebook 3 starts with evaluation batches of 2 for GPU memory headroom; lower `EVAL_BATCH_SIZE` to 1 if the runtime runs out of memory. Update `BASE_DIR` in each notebook if your Drive folder differs:
 
 ```python
 BASE_DIR = "/content/drive/MyDrive/YOUR_FOLDER"
@@ -93,7 +96,7 @@ BASE_DIR = "/content/drive/MyDrive/YOUR_FOLDER"
 
 ## Notebooks
 
-### 1. Baseline Evaluation (`1_Baseline_Evaluation.py`)
+### 1. Baseline Evaluation (`1)_Baseline_Evaluation.ipynb`)
 
 Evaluates four SLMs on the designated HarmBench model evaluation set without any defense applied. This establishes the baseline for comparison with the post-training model.
 
@@ -101,7 +104,7 @@ Evaluates four SLMs on the designated HarmBench model evaluation set without any
 - Dataset: dataset/model_evaluation/harmbench_test.jsonl loaded from GitHub
 - Results: saved to Google Drive with each prompt category
 
-### 2. SFT LoRA Training and Evaluation (`2_SFT_LoRA_Mistral_7B.py`)
+### 2. SFT LoRA Training and Evaluation (`2)_SFT_LoRA_Mistral_7B_v0_2.ipynb`)
 
 **Part A** fine-tunes Mistral-7B-Instruct-v0.2 using LoRA SFT on the adversarial safety corpus. Training runs in full BF16 precision to maximize weight update quality.
 
@@ -121,11 +124,11 @@ LoRA configuration:
 - Learning rate: 2e-4
 - Early stopping patience: 3
 
-### 3. Extrinsic vs. Intrinsic Evaluation (`3_Extrinsic_vs_Intrinsic.py`)
+### 3. Extrinsic vs. Intrinsic Evaluation (`3)_Extrinsic_vs_Intrinsic_Mistral.ipynb`)
 
-Runs the final head-to-head comparison across three conditions: Baseline, LoRA SFT (intrinsic), and Llama Guard 3 (extrinsic). Evaluates both DSR on adversarial prompts and FRR on safe prompts.
+Compares the baseline, LoRA SFT, Llama Guard 3, and Granite Guardian. Both extrinsic guards screen requests before generation and moderate generated responses. Results separately report input blocks, output blocks, harmful-request refusal proxies, and safe-prompt false-refusal proxies, including per-category summaries.
 
-- HuggingFace login: **Required** (Llama Guard 3 is gated)
+- HuggingFace login: **Required only for Llama Guard 3**; Granite Guardian is ungated
 - Datasets: designated HarmBench model evaluation and AdvBench/XSTest trained-model test files loaded from GitHub
 - Results: saved to Google Drive
 
@@ -135,9 +138,9 @@ Runs the final head-to-head comparison across three conditions: Baseline, LoRA S
 
 Training (notebook 2 Part A) uses full BF16 precision with no quantization to maximize model quality during weight updates.
 
-Evaluation (notebooks 2 Part B and 3) uses 4-bit NF4 quantization with `bnb_4bit_compute_dtype=torch.bfloat16`. This means weights are stored in 4-bit at rest but dequantized to BF16 during computation, which is why observed VRAM usage reflects BF16 levels rather than true 4-bit levels.
+Evaluation (notebooks 2 Part B and 3) uses 4-bit NF4 quantization. Notebook 3 selects BF16 compute when the Colab GPU supports it and otherwise uses FP16, including on common T4 runtimes.
 
-Running both Mistral 7B and Llama Guard 3 8B simultaneously in notebook 3 requires approximately 14 to 16GB of VRAM, which exceeds most consumer GPU budgets (typically 8 to 12GB). This is one of the core practical findings of the research: intrinsic defense via LoRA SFT is not only more effective but also the only approach that is realistically deployable on consumer hardware.
+Notebook 3 quantizes the target and guard models to 4-bit for evaluation. Llama Guard 3 8B has a larger memory footprint; Granite Guardian 3.1 2B is included as a smaller alternative. Actual VRAM requirements vary by runtime and batch size. The refusal-text metrics are proxies, not semantic judgments of response safety.
 
 ---
 
